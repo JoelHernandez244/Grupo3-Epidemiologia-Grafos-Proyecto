@@ -211,3 +211,248 @@ public:
         return true;
     }
 //dany abajo
+/// Elimina una persona y los contactos que otros tenian con ella
+    bool eliminarPersona(const string& id) {
+        Persona* p = obtenerPersona(id);
+        if (!p) return false;
+
+        Nodo* n = p->contactos.obtenerCabeza();
+        while (n) {
+            Persona* vecino = obtenerPersona(n->id);
+            if (vecino) vecino->contactos.eliminarContacto(id);
+            n = n->siguiente;
+        }
+
+        if (p->anterior) p->anterior->siguiente = p->siguiente;
+        else cabeza = p->siguiente;
+
+        if (p->siguiente) p->siguiente->anterior = p->anterior;
+        else cola = p->anterior;
+
+        delete p;
+        total--;
+        return true;
+    }
+
+    /// Crea un contacto entre dos personas (se guarda en las dos listas)
+    /// Retorna: 0 = ok, 1 = un ID no existe, 2 = mismo ID, 3 = ya son contactos
+    int crearContacto(const string& id1, const string& id2) {
+        if (id1 == id2) return 2;
+
+        Persona* a = obtenerPersona(id1);
+        Persona* b = obtenerPersona(id2);
+        if (!a || !b) return 1;
+        if (a->contactos.existeID(id2)) return 3;
+
+        a->contactos.insertarContacto(id2);
+        b->contactos.insertarContacto(id1);
+        return 0;
+    }
+
+    /// Rompe el contacto entre dos personas
+    bool romperContacto(const string& id1, const string& id2) {
+        Persona* a = obtenerPersona(id1);
+        Persona* b = obtenerPersona(id2);
+        if (!a || !b) return false;
+
+        bool r1 = a->contactos.eliminarContacto(id2);
+        bool r2 = b->contactos.eliminarContacto(id1);
+        return r1 && r2;
+    }
+
+    /// Infecta a una persona (caso inicial)
+    bool infectarPersona(const string& id) {
+        Persona* p = obtenerPersona(id);
+        if (!p || p->estado != 'S') return false;
+        p->estado = 'I';
+        return true;
+    }
+
+    /// Simula un dia con el modelo SIR
+    /// beta = probabilidad de contagio por contacto
+    /// gamma = probabilidad de que un infectado se recupere
+    void simularDia(double beta, double gamma, int& nuevosI, int& nuevosR) {
+        nuevosI = 0;
+        nuevosR = 0;
+
+        Persona* p = cabeza;
+        while (p) {
+            p->marcaInfectar = false;
+            p->marcaRecuperar = false;
+            p = p->siguiente;
+        }
+
+        // Primero se decide quien se contagia y quien se recupera
+        p = cabeza;
+        while (p) {
+            if (p->estado == 'I') {
+                Nodo* n = p->contactos.obtenerCabeza();
+                while (n) {
+                    Persona* vecino = obtenerPersona(n->id);
+                    if (vecino && vecino->estado == 'S' && hayProbabilidad(beta))
+                        vecino->marcaInfectar = true;
+                    n = n->siguiente;
+                }
+                if (hayProbabilidad(gamma)) p->marcaRecuperar = true;
+            }
+            p = p->siguiente;
+        }
+
+        // Despues se aplican los cambios
+        p = cabeza;
+        while (p) {
+            if (p->marcaInfectar) { p->estado = 'I'; nuevosI++; }
+            if (p->marcaRecuperar) { p->estado = 'R'; nuevosR++; }
+            p = p->siguiente;
+        }
+    }
+
+    void contarEstados(int& s, int& i, int& r) const {
+        s = i = r = 0;
+        Persona* p = cabeza;
+        while (p) {
+            if (p->estado == 'S') s++;
+            else if (p->estado == 'I') i++;
+            else r++;
+            p = p->siguiente;
+        }
+    }
+
+    /// Muestra todas las personas con sus contactos
+    void mostrarRed() const {
+        if (!cabeza) {
+            cout << "No hay personas registradas.\n";
+            return;
+        }
+        cout << "\nID\tNombre\t\tEstado\t\tContactos\n";
+        cout << "-----------------------------------------------------------------\n";
+        Persona* p = cabeza;
+        while (p) {
+            cout << p->id << "\t" << p->nombre << "\t\t" << textoEstado(p->estado)
+                 << "\t" << p->contactos.cantidad() << " -> ";
+            p->contactos.mostrarContactos();
+            cout << "\n";
+            p = p->siguiente;
+        }
+    }
+
+    /// Busca una persona por ID o nombre
+    void buscarPersona(const string& valor) const {
+        if (!cabeza) {
+            cout << "No hay personas registradas.\n";
+            return;
+        }
+        Persona* p = cabeza;
+        while (p) {
+            if (p->id == valor || p->nombre == valor) {
+                cout << "\nPersona encontrada:\n";
+                cout << "ID: " << p->id << "\nNombre: " << p->nombre
+                     << "\nEstado: " << textoEstado(p->estado)
+                     << "\nCantidad de contactos: " << p->contactos.cantidad();
+                cout << "\nContactos (directo): ";
+                p->contactos.mostrarContactos();
+                cout << "\nContactos (inverso): ";
+                p->contactos.mostrarContactosInverso();
+                cout << "\n";
+                return;
+            }
+            p = p->siguiente;
+        }
+        cout << "No se encontro ninguna persona con ese ID o nombre.\n";
+    }
+
+    /// Guarda la red en un archivo de texto
+    /// Formato: P|id|nombre|estado   y   C|id1|id2
+    void guardarEnArchivo() const {
+        ofstream archivo("red.txt");
+        if (!archivo) {
+            cout << "Error al guardar el archivo.\n";
+            return;
+        }
+        Persona* p = cabeza;
+        while (p) {
+            archivo << "P|" << p->id << "|" << p->nombre << "|" << p->estado << "\n";
+            p = p->siguiente;
+        }
+        p = cabeza;
+        while (p) {
+            Nodo* n = p->contactos.obtenerCabeza();
+            while (n) {
+                if (p->id < n->id)   // cada contacto se escribe una sola vez
+                    archivo << "C|" << p->id << "|" << n->id << "\n";
+                n = n->siguiente;
+            }
+            p = p->siguiente;
+        }
+        cout << "Red guardada en red.txt\n";
+    }
+
+    /// Carga la red desde el archivo
+    void cargarDesdeArchivo() {
+        ifstream archivo("red.txt");
+        if (!archivo) {
+            cout << "No se encontro red.txt\n";
+            return;
+        }
+        liberarMemoria();
+
+        string linea;
+        while (getline(archivo, linea)) {
+            stringstream ss(linea);
+            string tipo, dato1, dato2, dato3;
+            getline(ss, tipo, '|');
+            getline(ss, dato1, '|');
+            getline(ss, dato2, '|');
+            getline(ss, dato3, '|');
+
+            if (tipo == "P" && !dato1.empty() && !dato2.empty()) {
+    char est = dato3.empty() ? 'S' : dato3[0];
+
+    if (est != 'S' && est != 'I' && est != 'R') {
+        est = 'S';
+    }
+
+    agregarPersona(dato1, dato2, est);
+} else if (tipo == "C" && !dato1.empty() && !dato2.empty()) {
+    crearContacto(dato1, dato2);
+}
+        }
+        cout << "Red cargada correctamente (" << total << " personas).\n";
+    }
+
+    /// Genera una poblacion de ejemplo con contactos al azar
+ void generarPoblacionEjemplo(int n, int k) {
+    const char* nombres[] = {
+        "Ana", "Luis", "Marta", "Jose", "Carla",
+        "Pedro", "Sofia", "Diego", "Elena", "Raul"
+    };
+
+    string* ids = new string[n];
+    int candidato = 1000;
+
+    for (int i = 0; i < n; i++) {
+        while (obtenerPersona(to_string(candidato)) != nullptr) {
+            candidato++;
+        }
+
+        ids[i] = to_string(candidato);
+        agregarPersona(ids[i], nombres[i % 10]);
+        candidato++;
+    }
+
+    for (int i = 0; i < n; i++) {
+        for (int c = 0; c < k; c++) {
+            int j = rand() % n;
+            if (j != i) {
+                crearContacto(ids[i], ids[j]);
+            }
+        }
+    }
+
+    delete[] ids;
+}
+};
+
+
+//joel 
+
