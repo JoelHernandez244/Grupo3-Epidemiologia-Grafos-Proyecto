@@ -210,7 +210,7 @@ public:
         total++;
         return true;
     }
-//dany abajo
+
 /// Elimina una persona y los contactos que otros tenian con ella
     bool eliminarPersona(const string& id) {
         Persona* p = obtenerPersona(id);
@@ -453,6 +453,202 @@ public:
 }
 };
 
+/// ---------- Funciones de lectura con validacion ----------
+string leerID() {
+    string id;
+    while (true) {
+        cout << "Ingrese ID (solo numeros, minimo 4 digitos): ";
+        cin >> id;
+        bool valido = !id.empty();
+        for (char c : id) if (!isdigit(static_cast<unsigned char>(c))) valido = false;
+        if (id.length() >= 4 && valido) {
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');
+            return id;
+        }
+        cout << "ID invalido.\n";
+    }
+}
 
-//joel 
+string leerNombre() {
+    string nombre;
+    while (true) {
+        cout << "Ingrese nombre (solo letras): ";
+        getline(cin >> ws, nombre);
+        bool valido = !nombre.empty();
+        for (char c : nombre)
+            if (!isalpha(static_cast<unsigned char>(c)) && c != ' ') { valido = false; break; }
+        if (valido) return nombre;
+        cout << "Nombre invalido.\n";
+    }
+}
 
+int leerOpcion() {
+    int op;
+    while (!(cin >> op)) {
+        cin.clear();
+        cin.ignore(numeric_limits<streamsize>::max(), '\n');
+        cout << "Ingrese solo numeros: ";
+    }
+    cin.ignore(numeric_limits<streamsize>::max(), '\n');
+    return op;
+}
+
+int leerEntero(const string& mensaje, int minimo, int maximo) {
+    int valor;
+    while (true) {
+        cout << mensaje;
+        if (cin >> valor && valor >= minimo && valor <= maximo) {
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');
+            return valor;
+        }
+        cin.clear();
+        cin.ignore(numeric_limits<streamsize>::max(), '\n');
+        cout << "Valor invalido (de " << minimo << " a " << maximo << ").\n";
+    }
+}
+
+double leerProbabilidad(const string& mensaje) {
+    double p;
+    while (true) {
+        cout << mensaje;
+        if (cin >> p && p >= 0.0 && p <= 1.0) {
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');
+            return p;
+        }
+        cin.clear();
+        cin.ignore(numeric_limits<streamsize>::max(), '\n');
+        cout << "Ingrese un valor entre 0 y 1.\n";
+    }
+}
+
+/// ---------- Menu principal ----------
+int main() {
+    srand((unsigned)time(nullptr));
+    RedContactos red;
+    int opcion;
+
+    //------- Carga automatica ----
+    cout << "\nIntentando cargar red anterior...\n";
+    red.cargarDesdeArchivo();
+
+    do {
+        cout << "\n--- SIMULACION DE EPIDEMIA (RED DE CONTACTOS CON LISTA DOBLE ENLAZADA) ---\n";
+        cout << "1) Registrar persona\n";
+        cout << "2) Eliminar persona\n";
+        cout << "3) Crear contacto\n";
+        cout << "4) Romper contacto\n";
+        cout << "5) Infectar persona (caso inicial)\n";
+        cout << "6) Mostrar red\n";
+        cout << "7) Buscar persona\n";
+        cout << "8) Simular dias\n";
+        cout << "9) Resumen de estados\n";
+        cout << "10) Guardar red\n";
+        cout << "11) Cargar red\n";
+        cout << "12) Generar poblacion de ejemplo\n";
+        cout << "13) Salir del programa\n";
+        cout << "Seleccione una opcion: ";
+
+        opcion = leerOpcion();
+
+        switch (opcion) {
+        case 1: {
+            string id = leerID();
+            string nombre = leerNombre();
+            if (red.agregarPersona(id, nombre)) cout << "Persona registrada correctamente.\n";
+            else cout << "ID ya registrado.\n";
+            break;
+        }
+        case 2: {
+            string id = leerID();
+            if (red.eliminarPersona(id)) cout << "Persona eliminada correctamente.\n";
+            else cout << "Persona no encontrada.\n";
+            break;
+        }
+        case 3: {
+            cout << "Primera persona:\n";  string id1 = leerID();
+            cout << "Segunda persona:\n";  string id2 = leerID();
+            int r = red.crearContacto(id1, id2);
+            if (r == 0) cout << "Contacto creado correctamente.\n";
+            else if (r == 1) cout << "Alguno de los IDs no existe.\n";
+            else if (r == 2) cout << "Una persona no puede ser contacto de si misma.\n";
+            else cout << "Esas personas ya son contactos.\n";
+            break;
+        }
+        case 4: {
+            cout << "Primera persona:\n";  string id1 = leerID();
+            cout << "Segunda persona:\n";  string id2 = leerID();
+            if (red.romperContacto(id1, id2)) cout << "Contacto eliminado correctamente.\n";
+            else cout << "Ese contacto no existe.\n";
+            break;
+        }
+        case 5: {
+            string id = leerID();
+            if (red.infectarPersona(id)) cout << "Persona infectada.\n";
+            else cout << "Persona no encontrada o no esta susceptible.\n";
+            break;
+        }
+        case 6:
+            red.mostrarRed();
+            break;
+        case 7: {
+            string valor;
+            cout << "Ingrese ID o nombre de la persona a buscar: ";
+            getline(cin, valor);
+            red.buscarPersona(valor);
+            break;
+        }
+        case 8: {
+            if (red.cantidad() == 0) {
+                cout << "No hay personas registradas.\n";
+                break;
+            }
+            double beta = leerProbabilidad("Probabilidad de contagio por contacto (0 a 1): ");
+            double gamma = leerProbabilidad("Probabilidad de recuperacion por dia (0 a 1): ");
+            int dias = leerEntero("Cantidad de dias a simular (1 a 100): ", 1, 100);
+
+            cout << "\nDia\tS\tI\tR\tNuevos I\tNuevos R\n";
+            for (int d = 1; d <= dias; d++) {
+                int nuevosI, nuevosR, s, i, r;
+                red.simularDia(beta, gamma, nuevosI, nuevosR);
+                red.contarEstados(s, i, r);
+                cout << d << "\t" << s << "\t" << i << "\t" << r
+                     << "\t" << nuevosI << "\t\t" << nuevosR << "\n";
+                if (i == 0) {
+                    cout << "Ya no quedan personas infectadas.\n";
+                    break;
+                }
+            }
+            break;
+        }
+        case 9: {
+            int s, i, r;
+            red.contarEstados(s, i, r);
+            cout << "Total: " << red.cantidad() << " | Susceptibles: " << s
+                 << " | Infectados: " << i << " | Recuperados: " << r << "\n";
+            break;
+        }
+        case 10:
+            red.guardarEnArchivo();
+            break;
+        case 11:
+            red.cargarDesdeArchivo();
+            break;
+        case 12: {
+            int n = leerEntero("Cantidad de personas (2 a 500): ", 2, 500);
+            int k = leerEntero("Contactos por persona (1 a 10): ", 1, 10);
+            red.generarPoblacionEjemplo(n, k);
+            cout << "Poblacion de ejemplo generada.\n";
+            break;
+        }
+        case 13:
+            cout << "Guardando red antes de salir....\n";
+            red.guardarEnArchivo();
+            cout << "Saliendo del programa. Gracias por usar el sistema.\n";
+            break;
+        default:
+            cout << "Opcion invalida.\n";
+        }
+    } while (opcion != 13);
+
+    return 0;
+}
